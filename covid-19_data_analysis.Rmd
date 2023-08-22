@@ -1,0 +1,188 @@
+---
+title: "Covid-19 Data Analysis"
+author: "Savithri K Brahmadathan"
+date: "2023-08-22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Introduction
+This data is about analyzing the covid-19 cases globally as well as  by US
+## Getting the data
+The data for this report comes from John's Hopkins Corona virus resource center . It is read in as:read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/")
+## Data cleaning
+The given data contains so many files. From these files we listed the gobla cases, global deaths , Us cases ans US deaths
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(tidyverse)
+
+url_in <-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+file_names <- c("time_series_covid19_confirmed_global.csv", 
+                "time_series_covid19_confirmed_US.csv",
+                "time_series_covid19_deaths_global.csv", 
+                "time_series_covid19_deaths_US.csv")
+
+urls <- str_c(url_in, file_names)
+global_cases <- read_csv(urls[1])
+us_cases <- read_csv(urls[2])
+global_deaths <- read_csv(urls[3])
+us_deaths <- read_csv(urls[4])
+global_cases
+```
+Our first step in this analysis was to clean the data, as well as removing several rows that are unrelated like lat, log etc. Also, made small changes to the column s dtae and set the values as the cases. 
+```{r, echo = FALSE}
+global_cases <- global_cases %>%
+pivot_longer(cols = -c('Province/State', 
+                       'Country/Region',
+                           'Lat','Long'), 
+                 names_to = "date",
+                 values_to = "cases")%>%
+    select(-c(Lat,Long))
+global_cases
+
+```
+Also, we combined the global and global death and set it to the global variable
+```{r, echo =FALSE}
+global_deaths <- global_deaths %>%
+pivot_longer(cols = -c('Province/State', 
+                       'Country/Region',
+                           'Lat','Long'), 
+                 names_to = "date",
+                 values_to = "deaths")%>%
+    select(-c('Lat','Long'))
+global_deaths
+library(lubridate)
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region ='Country/Region', Province_State = 'Province/State') %>%
+  mutate(date = mdy(date))
+global
+global_nonzero <- global %>%
+  filter(cases> 0) %>%
+summary(global)
+global_nonzero
+global_high <- global %>% filter( cases > 100000000) %>%
+summary(global)
+global_high
+```
+
+```{r, echo =FALSE}
+library(lubridate)
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region ='Country/Region', Province_State = 'Province/State') %>%
+  mutate(date = mdy(date))
+global
+global_nonzero <- global %>%
+  filter(cases> 0) %>%
+summary(global)
+global_nonzero
+global_high <- global %>% filter( cases > 100000000) %>%
+summary(global)
+global_high
+``` 
+Similarly we did the combining in the us country also.
+```{r, echo=FALSE}
+us_cases <- us_cases %>%
+pivot_longer(cols = -(UID:Combined_Key), 
+                      names_to = "date",
+                      values_to = "cases") %>%
+select(Admin2:cases) %>%
+mutate(date = mdy(date))%>%
+select(-c(Lat,Long_))
+us_cases
+```
+```{r, echo=FALSE}
+us_deaths <- us_deaths %>%
+pivot_longer(cols = -(UID:Population), 
+                      names_to = "date",
+                      values_to = "deaths") %>%
+select(Admin2:deaths) %>%
+mutate(date = mdy(date))%>%
+select(-c(Lat,Long_))
+us_deaths
+```
+```{r, echo=FALSE}
+US <- us_cases %>%
+  full_join(us_deaths)
+US
+
+global <- global %>%
+unite("Combined_Key", 
+  c('Province_State', 'Country_Region'), 
+  sep = ", ", 
+  na.rm = TRUE,
+  remove = FALSE)
+global
+```
+## Plotting the data
+Plotted the  US total cases, deaths as well as deaths and cases in each state also
+```{r, echo = FALSE}
+US_by_State <- US %>%
+  group_by(Province_State, Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population))%>%
+  mutate(deaths_per_mill= (deaths * 1000000/Population))%>%
+  select(Province_State, Country_Region, date, cases, deaths, deaths_per_mill, Population)%>%
+  ungroup()
+US_by_State
+US_totals <- US_by_State %>%
+  group_by(Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population))%>%
+  mutate(deaths_per_mill= (deaths * 1000000/Population))%>%
+  select( Country_Region, date, cases, deaths, deaths_per_mill, Population)%>%
+  ungroup()
+US_totals
+tail(US_totals)
+```
+
+## Including Plots
+
+Visualizing the covid cases and deaths in the US by date
+```{r, echo = FALSE}
+US_totals
+tail(US_totals)
+US_totals %>%
+filter(cases> 0)%>%
+ggplot(aes(x =date, y= cases)) +
+geom_line(aes(color = "cases")) +
+geom_point(aes(color = "cases" ))+
+geom_line(aes(y = deaths, color = "deaths")) +
+geom_point(aes( y = deaths, color = "deaths")) +
+scale_y_log10()+
+theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+labs(title = "Covid-19 in US", y =NULL)
+```
+Visualization of covid cases in each states in the US
+```{r, echo = FALSE}
+US_by_State <- US %>%
+  group_by(Province_State, Country_Region) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population))
+US_by_State %>%
+filter(cases> 0)%>%
+ggplot(aes(x =Province_State, y= cases)) +
+geom_col(aes(fill = "cases")) +
+scale_fill_manual(values = c("#0000ff")) +
+scale_y_log10()+
+theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+labs(title = "Covid-19 cases by state", y =NULL)
+```
+
+Visualization covid deaths occured in each state of the US
+```{r, echo = FALSE}
+US_by_State %>%
+filter(deaths> 0)%>%
+ggplot(aes(x =Province_State, y= deaths)) +
+geom_col(aes(fill = "deaths")) +
+scale_fill_manual(values = c("#ff0000"))+
+scale_y_log10()+
+theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+labs(title = "Covid-19 deaths by state", y =NULL)
+```
+
+From these graphs it is shown that most of the covid cases were in California, Texas, florida erc. Its very low were the population is low
+
+## Biases & questions
+This analysis does not take into account potential environmental factors. E.g., the population of individual states or country, the relative age, or the relative wealth of the people  were not considered and may also have a large impact on both the number of cases, as well as the deaths also.Some staes / country better first response time some countries not.So may is there any noises regarding data? or is it real? These are some questions would definitly arise when look into these data.
